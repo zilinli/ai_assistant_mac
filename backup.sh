@@ -25,7 +25,7 @@ git add -A
 if git diff --cached --quiet; then
   echo "无变更，跳过提交"
 else
-  git commit --file=/dev/stdin <<EOF
+  git -c core.editor=true commit --file=/dev/stdin <<EOF
 $MSG
 EOF
 fi
