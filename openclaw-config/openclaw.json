@@ -36,8 +36,43 @@
         "fallbacks": [
           "qwen/qwen3.5-plus"
         ]
+      },
+      "memorySearch": {
+        "enabled": true,
+        "provider": "openai-compatible",
+        "model": "text-embedding-v4",
+        "fallback": "none",
+        "sources": [
+          "memory"
+        ],
+        "extraPaths": [
+          "/Users/chingching/tasks"
+        ],
+        "remote": {
+          "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+          "apiKey": "${DASHSCOPE_API_KEY}"
+        }
       }
-    }
+    },
+    "list": [
+      {
+        "id": "main"
+      },
+      {
+        "id": "coder",
+        "name": "coder",
+        "workspace": "/Users/chingching/.openclaw/agents/coder/workspace",
+        "agentDir": "/Users/chingching/.openclaw/agents/coder/agent",
+        "model": "deepseek/deepseek-v4-flash"
+      },
+      {
+        "id": "office",
+        "name": "office",
+        "workspace": "/Users/chingching/.openclaw/agents/office/workspace",
+        "agentDir": "/Users/chingching/.openclaw/agents/office/agent",
+        "model": "deepseek/deepseek-v4-flash"
+      }
+    ]
   },
   "gateway": {
     "mode": "local",
@@ -74,6 +109,9 @@
       },
       "browser": {
         "enabled": true
+      },
+      "memory-core": {
+        "config": {}
       }
     },
     "allow": [
@@ -310,11 +348,25 @@
   },
   "meta": {
     "lastTouchedVersion": "2026.7.1-2",
-    "lastTouchedAt": "2026-08-17T02:08:12.014Z"
+    "lastTouchedAt": "2026-08-17T04:03:07.736Z"
   },
   "channels": {
     "openclaw-weixin": {
       "channelConfigUpdatedAt": "2026-08-17T01:37:35.924Z"
+    }
+  },
+  "mcp": {
+    "servers": {
+      "filesystem": {
+        "command": "node",
+        "args": [
+          "/usr/local/lib/node_modules/@modelcontextprotocol/server-filesystem/dist/index.js",
+          "/Users/chingching/tasks",
+          "/Users/chingching/.openclaw/workspace/memory",
+          "/Users/chingching/Documents"
+        ],
+        "supportsParallelToolCalls": true
+      }
     }
   }
 }

@@ -5,6 +5,7 @@ set -e
 
 REPO_DIR="$HOME/ai-assistant"
 CONFIG_SRC="$HOME/.openclaw"
+WS="$CONFIG_SRC/workspace"
 
 cd "$REPO_DIR"
 
@@ -15,8 +16,16 @@ cp "$CONFIG_SRC/openclaw.json.bak" openclaw-config/ 2>/dev/null || true
 cp "$CONFIG_SRC/openclaw.json.last-good" openclaw-config/ 2>/dev/null || true
 cp "$CONFIG_SRC/cursor/cursor-run.mjs" openclaw-config/cursor/ 2>/dev/null || true
 cp "$CONFIG_SRC/cursor/package.json" openclaw-config/cursor/ 2>/dev/null || true
-cp "$CONFIG_SRC/workspace/AGENTS.md" openclaw-config/workspace/ 2>/dev/null || true
-cp "$CONFIG_SRC/workspace/WEIXIN_COMMANDS.md" openclaw-config/workspace/ 2>/dev/null || true
+
+# 工作区核心文档
+for f in AGENTS.md WEIXIN_COMMANDS.md HEARTBEAT.md IDENTITY.md SOUL.md TOOLS.md USER.md; do
+  cp "$WS/$f" openclaw-config/workspace/ 2>/dev/null || true
+done
+
+# 工作区 skills（含子目录，递归复制）
+rm -rf openclaw-config/workspace/skills
+mkdir -p openclaw-config/workspace/skills
+cp -R "$WS/skills/." openclaw-config/workspace/skills/ 2>/dev/null || true
 
 # 2. 提交
 echo "[2/3] 提交变更..."

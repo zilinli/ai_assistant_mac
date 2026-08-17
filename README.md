@@ -7,14 +7,17 @@
 
 ```
 ├── README.md                 本说明
+├── USAGE.md                  ★ 使用手册（微信遥控日常操作指南）
 ├── comparison.md             AI 助理产品对比文档
+├── feature-benchmark.md      WorkBuddy 功能对标 + 取长补短路线图（含实施状态）
 ├── rotate-keys.md            API Key 轮换指引
+├── backup.sh                 一键备份脚本（配置+文档+技能）
 ├── openclaw-config/          OpenClaw 配置备份
 │   ├── openclaw.json         主配置（API key 均为环境变量引用，无明文）
 │   ├── openclaw.json.bak     备份副本
 │   ├── openclaw.json.last-good 上次可用配置
 │   ├── cursor/               Cursor Agent 驱动脚本（cursor-run.mjs）
-│   └── workspace/            AGENTS.md、技能定义、微信指令速查
+│   └── workspace/            AGENTS.md、技能库、微信指令速查、心跳清单、记忆
 └── .gitignore                排除敏感文件
 ```
 
