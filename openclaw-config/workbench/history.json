@@ -1,9 +1,0 @@
-[
-  {
-    "task_id": "1786949898694-1",
-    "agent": "main",
-    "message": "运行 pmset -g batt 查一下电量，用一句话告诉我剩余百分比",
-    "status": "running",
-    "time": "2026-08-17 14:58:18"
-  }
-]
