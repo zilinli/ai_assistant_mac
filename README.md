@@ -30,11 +30,16 @@
 ## 备份方式
 
 ```bash
-# 更新备份
+# 一键备份（同步配置 + 提交 + 推送）
+bash ~/ai-assistant/backup.sh
+
+# 或手动
 cd ~/ai-assistant
 cp ~/.openclaw/openclaw.json openclaw-config/
 git add -A
-git commit -m "备份 $(date +%F)"
+git commit --file=/dev/stdin <<'EOF'
+backup message
+EOF
 git push
 ```
 
