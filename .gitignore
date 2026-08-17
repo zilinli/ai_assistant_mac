@@ -16,3 +16,7 @@ package-lock.json
 .DS_Store
 openclaw-config/workbench/history.json
 openclaw-config/workbench/workbench.log
+openclaw-config/workbench/sessions.json
+
+# 调试产物
+.cursor/

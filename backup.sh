@@ -31,11 +31,11 @@ cp -R "$WS/skills/." openclaw-config/workspace/skills/ 2>/dev/null || true
 mkdir -p openclaw-config/workspace/memory
 cp -R "$WS/memory/." openclaw-config/workspace/memory/ 2>/dev/null || true
 
-# Bolt Console（排除运行时文件 history.json/workbench.log）
+# Bolt Console（排除运行时文件 history.json/workbench.log/sessions.json）
 rm -rf openclaw-config/workbench
 mkdir -p openclaw-config/workbench
 cp -R "$HOME/openclaw-workbench/." openclaw-config/workbench/ 2>/dev/null || true
-rm -f openclaw-config/workbench/history.json openclaw-config/workbench/workbench.log
+rm -f openclaw-config/workbench/history.json openclaw-config/workbench/workbench.log openclaw-config/workbench/sessions.json
 
 # 2. 提交
 echo "[2/3] 提交变更..."

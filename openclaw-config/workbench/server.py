@@ -8,7 +8,9 @@ Bolt Console（OpenClaw）本地后端
 import html as htmlmod
 import json
 import os
+import queue
 import re
+import stat
 import subprocess
 import threading
 import time
@@ -30,13 +32,35 @@ MEMORY_DIR = os.path.join(WORKSPACE_DIR, "memory")
 SKILLS_DIR = os.path.join(WORKSPACE_DIR, "skills")
 WORKBENCH_DIR = os.path.dirname(os.path.abspath(__file__))
 HISTORY_FILE = os.path.join(WORKBENCH_DIR, "history.json")
+SESSIONS_FILE = os.path.join(WORKBENCH_DIR, "sessions.json")
 VENV_PY = os.path.join(HOME, ".openclaw", "venv", "bin", "python3")
 PANDOC = os.path.join(
     HOME, ".openclaw", "venv", "lib", "python3.9",
     "site-packages", "pypandoc", "files", "pandoc",
 )
+CURSOR_RUNNER = os.path.join(WORKBENCH_DIR, "cursor", "cursor-agent.mjs")
+CURSOR_CWD = os.environ.get("BOLT_CURSOR_CWD") or TASKS_DIR
 
 ALLOWED_ROOTS = [TASKS_DIR, MEMORY_DIR, SKILLS_DIR]
+
+# region agent log
+DEBUG_LOG = "/Users/chingching/ai-assistant/.cursor/debug-019ce7.log"
+
+def _dbg(message, hypothesis_id, **data):
+    try:
+        rec = {
+            "sessionId": "019ce7",
+            "location": "server.py",
+            "message": message,
+            "hypothesisId": hypothesis_id,
+            "data": data,
+            "timestamp": int(time.time() * 1000),
+        }
+        with open(DEBUG_LOG, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+# endregion
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico"}
 AUDIO_EXTS = {".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac", ".opus"}
@@ -62,11 +86,26 @@ MIME = {
     ".pdf": "application/pdf",
 }
 
-AGENTS = ["main", "coder", "office"]
+AGENTS = ["main", "coder", "office", "cursor"]
 
 _tasks = {}
 _hist = []
+_sessions = []  # 会话列表，元素：{session_id, agent, agent_id, title, created, updated, messages:[]}
 _lock = threading.Lock()
+# task_id -> list[queue.Queue]：SSE 订阅者，cursor 任务运行时会向其中推送流式事件
+_stream_queues = {}
+
+
+def _publish(task_id, ev):
+    """把一条事件推给该任务的所有 SSE 订阅者（无订阅者则忽略）。"""
+    subs = _stream_queues.get(task_id)
+    if not subs:
+        return
+    for q in list(subs):
+        try:
+            q.put(ev)
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def log(msg):
@@ -99,7 +138,7 @@ def mime_for(name):
 
 # ---------------- 任务执行 ----------------
 
-def run_openclaw_agent(task_id, agent, message):
+def run_openclaw_agent(task_id, agent, message, session_id=None):
     env = dict(os.environ)
     cmd = ["openclaw", "agent", "--agent", agent, "--json", "-m", message]
     started = time.time()
@@ -130,6 +169,12 @@ def run_openclaw_agent(task_id, agent, message):
                 "started": started,
                 "duration": round(time.time() - started, 1),
             }
+            _set_hist(task_id, "done", text)
+            if session_id:
+                _append_session_msg(session_id, "assistant", text, "done")
+        # region agent log
+        _dbg("task done", "B", task_id=task_id, text_len=len(text or ""))
+        # endregion
     except Exception as e:  # noqa: BLE001
         log("task %s error: %s" % (task_id, e))
         with _lock:
@@ -143,6 +188,165 @@ def run_openclaw_agent(task_id, agent, message):
                 "started": started,
                 "duration": round(time.time() - started, 1),
             }
+            _set_hist(task_id, "error", None)
+            if session_id:
+                _append_session_msg(session_id, "assistant", str(e), "error")
+        # region agent log
+        _dbg("task error", "B", task_id=task_id, error=str(e))
+        # endregion
+
+
+def run_cursor_agent(task_id, agent, message, session_id=None):
+    """通过 Node 侧车调用 Cursor SDK，并实时解析其 NDJSON 流式输出。"""
+    env = dict(os.environ)
+    started = time.time()
+    text_parts = []      # 累积的增量文本
+    activity = "启动中…"
+    log_lines = []       # 最近的活动日志（status/tool）
+    final = None
+
+    def _apply(final_text=None, final_status=None, err=None):
+        with _lock:
+            t = _tasks.get(task_id)
+            if not t:
+                return
+            t["activity"] = activity
+            t["log"] = list(log_lines[-40:])
+            if final_status is not None:
+                t["status"] = final_status
+                t["text"] = final_text or "".join(text_parts)
+                t["error"] = err
+                t["duration"] = round(time.time() - started, 1)
+            else:
+                t["text"] = "".join(text_parts)
+
+    def _finalize(ev):
+        """把终态（done/error）一次性落盘：任务状态、历史、会话消息、agentId。"""
+        et = ev.get("type")
+        is_done = et == "done"
+        text = (ev.get("text") or "").strip() or "".join(text_parts)
+        err = ev.get("error")
+        status = "done" if is_done else "error"
+        with _lock:
+            t = _tasks.get(task_id)
+            if t:
+                t["status"] = status
+                t["text"] = text if is_done else (t.get("text") or "")
+                t["error"] = err
+                t["activity"] = activity
+                t["log"] = list(log_lines[-40:])
+                t["duration"] = round(time.time() - started, 1)
+            _set_hist(task_id, status, text if is_done else None)
+            if session_id:
+                _append_session_msg(session_id, "assistant", text if is_done else (err or "执行失败"), status)
+                if is_done:
+                    _set_session_agent_id(session_id, ev.get("agentId"))
+
+    try:
+        log("run cursor task %s msg=%s..." % (task_id, message[:60]))
+        # 续接会话：把 cursor 的 agentId 传给侧车，侧车用 Agent.resume 恢复上下文
+        resume_id = None
+        if session_id:
+            s = _session_by_id(session_id)
+            resume_id = (s or {}).get("agent_id")
+        payload = json.dumps({
+            "message": message,
+            "cwd": CURSOR_CWD,
+            "sessionId": resume_id or "",
+        })
+        proc = subprocess.Popen(
+            ["node", CURSOR_RUNNER],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, text=True, env=env)
+        try:
+            proc.stdin.write(payload)
+        except BrokenPipeError:
+            pass
+        try:
+            proc.stdin.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+        def _reader():
+            nonlocal activity, final
+            for line in proc.stdout:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    ev = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                et = ev.get("type")
+                if et == "status":
+                    activity = ev.get("message") or activity
+                    log_lines.append(activity)
+                elif et == "agent":
+                    # 尽早持久化 agentId，供下一轮续会话（避免 done 之后才回填的时序竞争）
+                    aid = ev.get("agentId")
+                    if session_id and aid:
+                        with _lock:
+                            _set_session_agent_id(session_id, aid)
+                elif et == "thinking":
+                    text = (ev.get("text") or "").strip()
+                    activity = "思考中…"
+                    # 思考文本按行拆入日志，便于右上角 console 逐行展示
+                    for ln in text.splitlines():
+                        ln = ln.strip()
+                        if ln:
+                            log_lines.append("· " + (ln if len(ln) <= 180 else ln[:180] + "…"))
+                elif et == "tool":
+                    name = ev.get("tool") or ""
+                    if ev.get("phase") == "running":
+                        activity = "执行: %s" % name
+                        log_lines.append(activity)
+                    else:
+                        activity = "完成: %s" % name
+                        out = str(ev.get("output") or "").strip()
+                        log_lines.append("✓ %s %s" % (name, out[:160]))
+                elif et == "delta":
+                    text_parts.append(ev.get("text") or "")
+                elif et in ("done", "error"):
+                    final = ev
+                    _finalize(ev)
+                    _publish(task_id, ev)
+                    continue
+                _apply()
+                _publish(task_id, ev)
+
+        reader = threading.Thread(target=_reader, daemon=True)
+        reader.start()
+        try:
+            proc.wait(timeout=900)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            _apply(final_status="error", err="Cursor 执行超时（900s）")
+            with _lock:
+                _set_hist(task_id, "error", None)
+                if session_id:
+                    _append_session_msg(session_id, "assistant", "Cursor 执行超时（900s）", "error")
+            return
+        reader.join(timeout=5)
+        if final is None:
+            err = (proc.stderr.read() or "")[-1000:]
+            _finalize({"type": "error", "error": "Cursor 无有效输出" + ("\n" + err if err else "")})
+            _dbg("cursor task error", "C", task_id=task_id, error="no output")
+            return
+        if final.get("type") == "done":
+            _dbg("cursor task done", "C", task_id=task_id,
+                 text_len=len(final.get("text") or ""), agent_id=final.get("agentId"))
+        else:
+            _dbg("cursor task error", "C", task_id=task_id, error=final.get("error"))
+    except Exception as e:  # noqa: BLE001
+        log("cursor task %s error: %s" % (task_id, e))
+        _apply(final_status="error", err=str(e))
+        with _lock:
+            _set_hist(task_id, "error", None)
+            if session_id:
+                _append_session_msg(session_id, "assistant", str(e), "error")
+        # region agent log
+        _dbg("cursor task error", "C", task_id=task_id, error=str(e))
+        # endregion
 
 
 def save_history():
@@ -153,6 +357,16 @@ def save_history():
         pass
 
 
+def _set_hist(task_id, status, text=None):
+    for h in _hist:
+        if h.get("task_id") == task_id:
+            h["status"] = status
+            if text is not None:
+                h["text"] = text
+            break
+    save_history()
+
+
 def load_history():
     global _hist
     try:
@@ -161,6 +375,87 @@ def load_history():
                 _hist = json.load(f)
     except Exception:  # noqa: BLE001
         _hist = []
+    # region agent log
+    # 重启后仍在 running 的历史条目必然是孤儿（原进程已死），标记为 interrupted
+    orphaned = [h.get("task_id") for h in _hist if h.get("status") == "running"]
+    _dbg("load_history reconcile", "B", orphaned=orphaned)
+    if orphaned:
+        for h in _hist:
+            if h.get("status") == "running":
+                h["status"] = "interrupted"
+        save_history()
+    # endregion
+
+
+# ---------------- 会话（多轮对话） ----------------
+
+def _now_ts():
+    return time.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def save_sessions():
+    try:
+        with open(SESSIONS_FILE, "w", encoding="utf-8") as f:
+            json.dump(_sessions, f, ensure_ascii=False, indent=2)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def load_sessions():
+    global _sessions
+    try:
+        if os.path.exists(SESSIONS_FILE):
+            with open(SESSIONS_FILE, encoding="utf-8") as f:
+                _sessions = json.load(f)
+    except Exception:  # noqa: BLE001
+        _sessions = []
+
+
+def _session_by_id(session_id):
+    for s in _sessions:
+        if s.get("session_id") == session_id:
+            return s
+    return None
+
+
+def _new_session(session_id, agent, message):
+    title = (message or "").strip().replace("\n", " ")[:40] or "新会话"
+    s = {
+        "session_id": session_id,
+        "agent": agent,
+        "agent_id": None,  # cursor 会话首轮结束后回填 agentId，用于续接
+        "title": title,
+        "created": _now_ts(),
+        "updated": _now_ts(),
+        "messages": [],
+    }
+    _sessions.insert(0, s)
+    save_sessions()
+    return s
+
+
+def _append_session_msg(session_id, role, text, status="done"):
+    s = _session_by_id(session_id)
+    if not s:
+        return
+    s["messages"].append({
+        "role": role,
+        "text": text or "",
+        "status": status,
+        "ts": _now_ts(),
+    })
+    s["updated"] = _now_ts()
+    save_sessions()
+
+
+def _set_session_agent_id(session_id, agent_id):
+    if not agent_id:
+        return
+    s = _session_by_id(session_id)
+    if not s or s.get("agent_id"):
+        return
+    s["agent_id"] = agent_id
+    save_sessions()
 
 
 # ---------------- 文件系统工具 ----------------
@@ -187,16 +482,28 @@ def walk_tree(root, max_depth=3):
     for entry in sorted(os.listdir(root), key=lambda x: (not os.path.isdir(os.path.join(root, x)), x.lower())):
         fp = os.path.join(root, entry)
         rel = os.path.relpath(fp, TASKS_DIR)
-        if os.path.isdir(fp):
+        # region agent log
+        try:
+            st = os.lstat(fp)
+        except OSError as e:
+            _dbg("walk_tree stat error", "A", path=fp, error=str(e))
+            continue
+        if stat.S_ISLNK(st.st_mode):
+            _dbg("walk_tree skip symlink", "A", path=fp)
+            continue
+        # endregion
+        if stat.S_ISDIR(st.st_mode):
             children = walk_tree(fp, max_depth - 1) if max_depth > 0 else []
             items.append({"name": entry, "type": "dir", "path": rel, "children": children})
         else:
-            st = os.stat(fp)
             items.append({
                 "name": entry, "type": "file", "path": rel,
                 "size": st.st_size, "mtime": int(st.st_mtime),
                 "kind": file_kind(entry),
             })
+    # region agent log
+    _dbg("walk_tree done", "A", root=root, count=len(items))
+    # endregion
     return items
 
 
@@ -528,6 +835,66 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self._handle_get(head_only=False)
 
+    def _handle_stream(self, tid):
+        """SSE 流式输出：订阅任务事件队列，实时推送 status/tool/delta/done。"""
+        q = queue.Queue()
+        with _lock:
+            _stream_queues.setdefault(tid, []).append(q)
+            t = _tasks.get(tid)
+            snapshot = dict(t) if t else {
+                "task_id": tid, "status": "running", "text": "",
+                "activity": "排队中…", "log": [], "agent": "cursor",
+            }
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "close")
+        self.send_header("X-Accel-Buffering", "no")
+        self.close_connection = True
+        self.end_headers()
+
+        def send_ev(obj):
+            self.wfile.write(
+                ("data: " + json.dumps(obj, ensure_ascii=False) + "\n\n").encode("utf-8"))
+            self.wfile.flush()
+
+        try:
+            send_ev({
+                "type": "snapshot",
+                "text": snapshot.get("text") or "",
+                "activity": snapshot.get("activity") or "",
+                "status": snapshot.get("status"),
+                "agent": snapshot.get("agent") or "cursor",
+            })
+            terminal_sent = False
+            while not terminal_sent:
+                try:
+                    ev = q.get(timeout=0.5)
+                except queue.Empty:
+                    self.wfile.write(b": ping\n\n")
+                    self.wfile.flush()
+                    with _lock:
+                        cur = _tasks.get(tid)
+                    if cur and cur.get("status") in ("done", "error"):
+                        send_ev({
+                            "type": "done" if cur["status"] == "done" else "error",
+                            "text": cur.get("text") or "",
+                            "error": cur.get("error"),
+                        })
+                        terminal_sent = True
+                    continue
+                send_ev(ev)
+                if ev.get("type") in ("done", "error"):
+                    terminal_sent = True
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        finally:
+            with _lock:
+                subs = _stream_queues.get(tid)
+                if subs and q in subs:
+                    subs.remove(q)
+
     def _handle_get(self, head_only=False):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
@@ -570,7 +937,34 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/history":
             return self._json(200, _hist)
 
+        if path == "/api/sessions":
+            with _lock:
+                out = [{
+                    "session_id": s.get("session_id"),
+                    "agent": s.get("agent"),
+                    "agent_id": s.get("agent_id"),
+                    "title": s.get("title"),
+                    "created": s.get("created"),
+                    "updated": s.get("updated"),
+                    "message_count": len(s.get("messages") or []),
+                } for s in _sessions]
+            out.sort(key=lambda x: x.get("updated") or "", reverse=True)
+            return self._json(200, out)
+
+        if path.startswith("/api/session/"):
+            sid = urllib.parse.unquote(path.split("/")[-1])
+            with _lock:
+                s = _session_by_id(sid)
+                if not s:
+                    return self._json(404, {"error": "session not found"})
+                return self._json(200, dict(s))
+
         if path.startswith("/api/task/"):
+            parts = path.split("/")
+            # /api/task/<tid>/stream → SSE 流式输出
+            if len(parts) >= 5 and parts[-1] == "stream":
+                tid = urllib.parse.unquote(parts[-2])
+                return self._handle_stream(tid)
             tid = urllib.parse.unquote(path.split("/")[-1])
             with _lock:
                 t = _tasks.get(tid)
@@ -625,6 +1019,14 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
+        if path.startswith("/api/session/") and path.endswith("/delete"):
+            sid = urllib.parse.unquote(path.split("/")[-2])
+            with _lock:
+                before = len(_sessions)
+                _sessions[:] = [s for s in _sessions if s.get("session_id") != sid]
+                if len(_sessions) != before:
+                    save_sessions()
+            return self._json(200, {"ok": True})
         if path != "/api/task":
             return self._json(404, {"error": "not found"})
         length = int(self.headers.get("Content-Length", 0))
@@ -640,19 +1042,31 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(400, {"error": "empty message"})
         if agent not in AGENTS:
             return self._json(400, {"error": "unknown agent"})
-        task_id = "%s-%d" % (int(time.time() * 1000), len(_tasks) + 1)
+
+        # 会话：支持继续对话。前端传 sessionId 则复用，否则新建会话。
+        session_id = (data.get("sessionId") or "").strip()
         with _lock:
+            if not (session_id and _session_by_id(session_id)):
+                session_id = "s-%d-%d" % (int(time.time() * 1000), len(_sessions) + 1)
+                _new_session(session_id, agent, message)
+            _append_session_msg(session_id, "user", message, "done")
+
+            task_id = "%s-%d" % (int(time.time() * 1000), len(_tasks) + 1)
             _tasks[task_id] = {
                 "task_id": task_id,
                 "status": "running", "text": "", "error": None,
                 "agent": agent, "message": message,
+                "session_id": session_id,
                 "started": time.time(), "duration": 0,
+                "activity": "排队中…", "log": [],
             }
             _hist.insert(0, {"task_id": task_id, "agent": agent, "message": message,
-                             "status": "running", "time": time.strftime("%Y-%m-%d %H:%M:%S")})
+                             "status": "running", "session_id": session_id,
+                             "time": time.strftime("%Y-%m-%d %H:%M:%S")})
             save_history()
-        threading.Thread(target=run_openclaw_agent, args=(task_id, agent, message), daemon=True).start()
-        return self._json(200, {"task_id": task_id})
+        target = run_cursor_agent if agent == "cursor" else run_openclaw_agent
+        threading.Thread(target=target, args=(task_id, agent, message, session_id), daemon=True).start()
+        return self._json(200, {"task_id": task_id, "session_id": session_id})
 
     def _serve_static(self, name, ctype):
         fp = os.path.join(WORKBENCH_DIR, name)
@@ -667,6 +1081,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     load_history()
+    load_sessions()
     os.makedirs(TASKS_DIR, exist_ok=True)
     log("starting %s v%s on http://%s:%d" % (PRODUCT, VERSION, HOST, PORT))
     log("tasks dir: %s" % TASKS_DIR)
