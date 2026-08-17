@@ -537,6 +537,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._serve_static("index.html", "text/html; charset=utf-8")
         if path == "/marked.min.js":
             return self._serve_static("marked.min.js", "application/javascript; charset=utf-8")
+        if path == "/favicon.svg":
+            return self._serve_static("favicon.svg", "image/svg+xml")
+        if path == "/favicon.ico":
+            self.send_response(302)
+            self.send_header("Location", "/favicon.svg")
+            self.end_headers()
+            return
+        if path == "/manifest.webmanifest":
+            return self._serve_static("manifest.webmanifest", "application/manifest+json")
 
         if path == "/api/health":
             ok = os.path.exists(os.path.join(HOME, ".openclaw", "openclaw.json"))
