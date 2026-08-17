@@ -6,8 +6,6 @@
 - **Emoji:** ⚡
 - **Avatar:**
 
-旧称「修修」。微信里叫修修仍指向本 agent。
-
 ---
 
 This isn't just metadata. It's the start of figuring out who you are.

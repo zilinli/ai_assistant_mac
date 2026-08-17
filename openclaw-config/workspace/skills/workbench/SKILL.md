@@ -7,7 +7,7 @@ description: "本地网页 Bolt Console：浏览器访问 http://127.0.0.1:18790
 
 给用户提供类似 Claude Artifacts / ChatGPT Canvas 的本机控制台：左侧对话，右侧常驻预览舞台，可打开 Markdown、Office、音视频与图像。
 
-旧称「工作台」仍然有效：用户说「开个工作台」时同样启动本服务。微信里叫「修修」仍指向本 agent（旧称）。
+旧称「工作台」仍然有效：用户说「开个工作台」时同样启动本服务。
 
 ## 地址
 
