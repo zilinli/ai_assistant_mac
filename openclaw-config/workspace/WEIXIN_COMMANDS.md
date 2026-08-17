@@ -83,9 +83,9 @@
   openclaw agent --agent coder --local -m "任务描述"
   openclaw agent --agent office --local -m "任务描述"
   ```
-- 微信里默认仍是 main（修修）处理，需要分工时说"让编码助手去做"。
+- 微信里默认仍是 main（Bolt）处理，需要分工时说"让编码助手去做"。
 
-## 修修 Console（网页控制台，旧称工作台）
+## Bolt Console（网页控制台，旧称工作台）
 - "开个工作台 / 打开 Console / 控制台 / 网页版打开 / 浏览器打开" → 运行 `bash ~/openclaw-workbench/start.sh`，回报地址 http://127.0.0.1:18790。
 - "关掉工作台 / 关掉 Console" → `bash ~/openclaw-workbench/stop.sh`。
 - Console 左侧发指令（可选手动指定 main/coder/office）；右侧舞台预览/播放 `~/tasks` 产物（Markdown、Office、音频、图像、视频），并查看技能与记忆。

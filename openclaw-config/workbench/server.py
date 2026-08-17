@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-修修 Console（OpenClaw）本地后端
+Bolt Console（OpenClaw）本地后端
 - 仅绑定 127.0.0.1，个人本机使用
 - 前端通过 fetch 调用以下 API
 - 核心路径无第三方依赖；Office 预览优先用 ~/.openclaw/venv
@@ -20,7 +20,7 @@ from pathlib import Path
 
 PORT = 18790
 HOST = "127.0.0.1"
-PRODUCT = "修修 Console"
+PRODUCT = "Bolt Console"
 VERSION = "2.0"
 
 HOME = str(Path.home())

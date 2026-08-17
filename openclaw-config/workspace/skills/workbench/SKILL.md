@@ -1,17 +1,17 @@
 ---
 name: workbench
-description: "本地网页修修 Console：浏览器访问 http://127.0.0.1:18790 可给修修发指令、在右侧舞台预览/播放 ~/tasks 产物（Markdown、Office、音频、图像、视频）。启动：bash ~/openclaw-workbench/start.sh；停止：bash ~/openclaw-workbench/stop.sh。当用户说'工作台/Console/控制台/网页版/浏览器打开/结果面板'时使用。"
+description: "本地网页 Bolt Console：浏览器访问 http://127.0.0.1:18790 可给 Bolt 发指令、在右侧舞台预览/播放 ~/tasks 产物（Markdown、Office、音频、图像、视频）。启动：bash ~/openclaw-workbench/start.sh；停止：bash ~/openclaw-workbench/stop.sh。当用户说'工作台/Console/控制台/网页版/浏览器打开/结果面板'时使用。"
 ---
 
-# 修修 Console（网页控制台）
+# Bolt Console（网页控制台）
 
 给用户提供类似 Claude Artifacts / ChatGPT Canvas 的本机控制台：左侧对话，右侧常驻预览舞台，可打开 Markdown、Office、音视频与图像。
 
-旧称「工作台」仍然有效：用户说「开个工作台」时同样启动本服务。
+旧称「工作台」仍然有效：用户说「开个工作台」时同样启动本服务。微信里叫「修修」仍指向本 agent（旧称）。
 
 ## 地址
 
-- 修修 Console：http://127.0.0.1:18790
+- Bolt Console：http://127.0.0.1:18790
 - OpenClaw 官方 Control UI：http://127.0.0.1:18789/（会话管理、更完整的配置，`openclaw dashboard` 打开）
 
 ## 启动 / 停止

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 修修 Console API 验收：health / Range / 媒体 / Office 预览
+# Bolt Console API 验收：health / Range / 媒体 / Office 预览
 set -euo pipefail
 
 BASE="${CONSOLE_URL:-http://127.0.0.1:18790}"
@@ -23,7 +23,7 @@ echo "=== health ==="
 HEALTH=$(curl -sf "$BASE/api/health")
 echo "$HEALTH"
 check "version 2.0" grep -q '"version": "2.0"' <<<"$HEALTH"
-check "product Console" grep -q '修修 Console' <<<"$HEALTH"
+check "product Console" grep -q 'Bolt Console' <<<"$HEALTH"
 
 echo ""
 echo "=== existing media ==="
@@ -62,7 +62,7 @@ pypandoc.convert_text("# Console 验收\n\n这是一段用于预览的 **Word** 
 
 prs = Presentation()
 slide = prs.slides.add_slide(prs.slide_layouts[1])
-slide.shapes.title.text = "修修 Console"
+slide.shapes.title.text = "Bolt Console"
 slide.placeholders[1].text = "PPT 预览验收页"
 prs.save(str(fix / "sample.pptx"))
 
@@ -93,7 +93,7 @@ check "kind image" grep -q '"kind": "image"' <<<"$TASKS_JSON"
 
 echo ""
 if [[ "$fail" -eq 0 ]]; then
-  echo "✅ 修修 Console API 验收通过"
+  echo "✅ Bolt Console API 验收通过"
 else
   echo "❌ 有失败项"
   exit 1

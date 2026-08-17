@@ -30,7 +30,7 @@ cat > build_docx.py <<'EOF'
 import pypandoc
 pypandoc.convert_file(
     "内容.md", "docx", outputfile="交付物.docx",
-    extra_args=["--standalone", "--toc", "--metadata", "title=标题", "--metadata", "author=修修"]
+    extra_args=["--standalone", "--toc", "--metadata", "title=标题", "--metadata", "author=Bolt"]
 )
 EOF
 $HOME/.openclaw/venv/bin/python build_docx.py

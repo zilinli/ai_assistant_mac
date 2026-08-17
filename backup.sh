@@ -31,7 +31,7 @@ cp -R "$WS/skills/." openclaw-config/workspace/skills/ 2>/dev/null || true
 mkdir -p openclaw-config/workspace/memory
 cp -R "$WS/memory/." openclaw-config/workspace/memory/ 2>/dev/null || true
 
-# 修修 Console（排除运行时文件 history.json/workbench.log）
+# Bolt Console（排除运行时文件 history.json/workbench.log）
 rm -rf openclaw-config/workbench
 mkdir -p openclaw-config/workbench
 cp -R "$HOME/openclaw-workbench/." openclaw-config/workbench/ 2>/dev/null || true

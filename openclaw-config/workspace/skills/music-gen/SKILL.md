@@ -52,7 +52,7 @@ python3 ~/.openclaw/workspace/skills/music-gen/generate_music.py \
 2. `task-deliver` 建目录。
 3. 写好 caption + lyrics（西班牙语/英语歌词直接进 `--lyrics`，中文翻译放 md 不进模型）。
 4. 先生成 20–40 秒试听；用户满意再加长。
-5. 交付：`song.mp3` 路径 + 歌词 md（建议文件名 `歌词.md`）。微信里说清路径。修修 Console 播放 mp3 时会自动滚动同目录歌词；若有 `.lrc` 则按时间轴精确对词。
+5. 交付：`song.mp3` 路径 + 歌词 md（建议文件名 `歌词.md`）。微信里说清路径。Bolt Console 播放 mp3 时会自动滚动同目录歌词；若有 `.lrc` 则按时间轴精确对词。
 
 ## 规则
 
