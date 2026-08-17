@@ -178,11 +178,21 @@ def run_openclaw_agent(task_id, agent, message, session_id=None):
     cmd = ["openclaw", "agent", "--agent", agent, "--json", "-m", message]
     started = time.time()
     log("run task %s agent=%s msg=%s..." % (task_id, agent, message[:60]))
+
+    def _act(msg):
+        """更新任务 activity 并推 SSE，让前端不再停留在「排队中…」。"""
+        with _lock:
+            t = _tasks.get(task_id)
+            if t:
+                t["activity"] = msg
+        _publish(task_id, {"type": "status", "message": msg})
+
     try:
         proc = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
         with _lock:
             _procs[task_id] = proc
+        _act("正在执行…")
         try:
             out, err = proc.communicate(timeout=900)
         except subprocess.TimeoutExpired:
@@ -219,6 +229,7 @@ def run_openclaw_agent(task_id, agent, message, session_id=None):
             _set_hist(task_id, "done", text)
             if session_id:
                 _append_session_msg(session_id, "assistant", text, "done")
+        _publish(task_id, {"type": "done", "text": text})
         # region agent log
         _dbg("task done", "B", task_id=task_id, text_len=len(text or ""))
         # endregion
@@ -240,6 +251,7 @@ def run_openclaw_agent(task_id, agent, message, session_id=None):
             _set_hist(task_id, "error", None)
             if session_id:
                 _append_session_msg(session_id, "assistant", str(e), "error")
+        _publish(task_id, {"type": "error", "error": str(e)})
         # region agent log
         _dbg("task error", "B", task_id=task_id, error=str(e))
         # endregion
