@@ -17,7 +17,7 @@
 │   ├── openclaw.json.bak     备份副本
 │   ├── openclaw.json.last-good 上次可用配置
 │   ├── cursor/               Cursor Agent 驱动脚本（cursor-run.mjs）
-│   ├── workbench/            网页工作台（server.py + index.html + 启停脚本）
+│   ├── workbench/            修修 Console（server.py + index.html + 启停脚本）
 │   └── workspace/            AGENTS.md、技能库、微信指令速查、心跳清单、记忆
 └── .gitignore                排除敏感文件
 ```
