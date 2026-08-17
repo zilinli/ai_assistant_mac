@@ -1,0 +1,16 @@
+# 敏感文件 - 永不提交
+.env
+*.env
+**/credentials/
+**/service-env/
+**/identity/
+**/logs/
+**/state/
+**/cache/
+
+# 依赖与构建
+node_modules/
+package-lock.json
+
+# macOS
+.DS_Store
