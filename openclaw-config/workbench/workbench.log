@@ -1,0 +1,3 @@
+[workbench] starting on http://127.0.0.1:18790
+[workbench] tasks dir: /Users/chingching/tasks
+[workbench] run task 1786949898694-1 agent=main msg=运行 pmset -g batt 查一下电量，用一句话告诉我剩余百分比...

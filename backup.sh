@@ -27,6 +27,15 @@ rm -rf openclaw-config/workspace/skills
 mkdir -p openclaw-config/workspace/skills
 cp -R "$WS/skills/." openclaw-config/workspace/skills/ 2>/dev/null || true
 
+# 记忆目录
+mkdir -p openclaw-config/workspace/memory
+cp -R "$WS/memory/." openclaw-config/workspace/memory/ 2>/dev/null || true
+
+# 网页工作台
+rm -rf openclaw-config/workbench
+mkdir -p openclaw-config/workbench
+cp -R "$HOME/openclaw-workbench/." openclaw-config/workbench/ 2>/dev/null || true
+
 # 2. 提交
 echo "[2/3] 提交变更..."
 MSG="backup $(date +%F_%H%M)"

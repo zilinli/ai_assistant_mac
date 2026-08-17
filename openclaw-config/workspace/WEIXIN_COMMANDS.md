@@ -80,6 +80,12 @@
   ```
 - 微信里默认仍是 main（修修）处理，需要分工时说"让编码助手去做"。
 
+## 网页工作台（Workbench）
+- "开个工作台 / 网页版打开 / 浏览器打开" → 运行 `bash ~/openclaw-workbench/start.sh`，回报地址 http://127.0.0.1:18790。
+- "关掉工作台" → `bash ~/openclaw-workbench/stop.sh`。
+- 工作台支持：给修修发指令（可选手动指定 main/coder/office agent）、浏览 `~/tasks` 产物并预览/下载、看技能与记忆清单。
+- 工作台调用不带 --deliver，回复只显示在网页，不会推送到微信；产物都在 ~/tasks，两端共享。
+
 ## 群聊限制
 - 当前微信 iLink bot **仅支持私聊**，不支持群聊。
 - 若确需群聊：可评估 ① 转 Telegram bot（`openclaw channels add telegram` 需自行注册 bot token，国内需代理）② 个人号桥接（有封号风险，不建议）。

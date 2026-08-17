@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>修修工作台 · OpenClaw</title>
+<style>
+  :root {
+    --bg: #f5f7fb; --card: #ffffff; --border: #e3e8f0;
+    --text: #1a2233; --muted: #6b7690; --accent: #4f6ef7;
+    --accent-2: #7c5cff; --ok: #22c55e; --err: #ef4444;
+    --run: #f59e0b; --radius: 14px; --shadow: 0 1px 3px rgba(16,24,40,.06), 0 8px 24px rgba(16,24,40,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1117; --card: #161b26; --border: #252d3d;
+      --text: #e6e9f0; --muted: #8b94a8; --accent: #6d8bff;
+      --accent-2: #9d7bff; --shadow: 0 1px 3px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.4);
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--text); min-height: 100vh;
+  }
+  header {
+    display: flex; align-items: center; gap: 12px; padding: 14px 22px;
+    background: var(--card); border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 10;
+  }
+  header .logo {
+    width: 34px; height: 34px; border-radius: 10px; flex: none;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 700; font-size: 15px;
+  }
+  header h1 { font-size: 17px; font-weight: 650; }
+  header .sub { font-size: 12px; color: var(--muted); }
+  header .status { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+  .dot.ok { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .dot.err { background: var(--err); }
+  main { display: grid; grid-template-columns: 1fr 340px; gap: 16px; padding: 16px 22px; max-width: 1400px; margin: 0 auto; }
+  @media (max-width: 980px) { main { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+  .left { display: flex; flex-direction: column; gap: 16px; min-height: 60vh; }
+  .right { display: flex; flex-direction: column; gap: 16px; }
+  /* 输入区 */
+  .composer { padding: 16px; }
+  .composer .row { display: flex; gap: 10px; }
+  select, input[type="text"], textarea {
+    font: inherit; color: var(--text); background: var(--bg);
+    border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; outline: none;
+  }
+  select:focus, input:focus, textarea:focus { border-color: var(--accent); }
+  select { flex: none; }
+  .composer textarea { flex: 1; resize: vertical; min-height: 52px; max-height: 180px; }
+  .send {
+    flex: none; border: 0; border-radius: 10px; padding: 0 20px; cursor: pointer;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; font-weight: 600;
+  }
+  .send:disabled { opacity: .55; cursor: not-allowed; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .chip {
+    font-size: 12.5px; padding: 6px 12px; border-radius: 999px; cursor: pointer;
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    transition: all .15s;
+  }
+  .chip:hover { border-color: var(--accent); color: var(--accent); }
+  /* 结果区 */
+  .results { padding: 16px; display: flex; flex-direction: column; gap: 12px; flex: 1; }
+  .results h2 { font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .task { border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+  .task .meta { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 12px; color: var(--muted); }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
+  .badge.running { background: rgba(245,158,11,.14); color: var(--run); }
+  .badge.done { background: rgba(34,197,94,.14); color: var(--ok); }
+  .badge.error { background: rgba(239,68,68,.14); color: var(--err); }
+  .task .msg { font-size: 13px; color: var(--muted); margin-bottom: 10px; word-break: break-all; }
+  .task .out { font-size: 14px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; max-height: 420px; overflow: auto; }
+  .task .err { color: var(--err); }
+  .empty { color: var(--muted); font-size: 13px; padding: 24px 0; text-align: center; }
+  /* 边栏 */
+  .panel { padding: 16px; }
+  .panel h3 { font-size: 13px; font-weight: 650; color: var(--muted); margin-bottom: 12px; letter-spacing: .03em; }
+  .tree { font-size: 13px; }
+  .tree .node { padding: 3px 0; }
+  .tree .dir, .tree .file { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 3px 6px; border-radius: 7px; }
+  .tree .dir:hover, .tree .file:hover { background: var(--bg); }
+  .tree .dir > .name { font-weight: 600; }
+  .tree .children { margin-left: 16px; border-left: 1px solid var(--border); padding-left: 8px; }
+  .tree .meta { font-size: 11px; color: var(--muted); }
+  .file-sz { font-size: 11px; color: var(--muted); }
+  .arrow { display: inline-block; width: 14px; color: var(--muted); }
+  .skill-item, .mem-item { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 8px; }
+  .skill-item .n { font-weight: 600; font-size: 13px; }
+  .skill-item .d { font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.5; }
+  .mem-item { display: flex; justify-content: space-between; font-size: 12.5px; }
+  .hist-item { font-size: 12.5px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 6px; }
+  .hist-item .t { color: var(--muted); font-size: 11px; }
+  /* 预览 */
+  .preview-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 100;
+    display: none; align-items: center; justify-content: center; padding: 30px;
+  }
+  .preview-box { background: var(--card); border-radius: var(--radius); width: min(880px, 100%); max-height: 84vh; display: flex; flex-direction: column; box-shadow: 0 24px 64px rgba(0,0,0,.35); }
+  .preview-head { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+  .preview-head .path { font-size: 13px; flex: 1; word-break: break-all; color: var(--muted); }
+  .preview-body { padding: 18px; overflow: auto; font-size: 14px; line-height: 1.7; white-space: pre-wrap; }
+  .btn { border: 1px solid var(--border); background: var(--bg); color: var(--text); border-radius: 8px; padding: 6px 14px; font-size: 12.5px; cursor: pointer; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn:hover { filter: brightness(1.05); }
+  .hide { display: none !important; }
+  .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--run); border-top-color: transparent; border-radius: 50%; animation: sp 1s linear infinite; margin-right: 6px; vertical-align: -1px; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">修</div>
+  <div>
+    <h1>修修工作台</h1>
+    <div class="sub">OpenClaw · 微信遥控 + 网页工作台</div>
+  </div>
+  <div class="status">
+    <span id="healthDot" class="dot"></span>
+    <span id="healthText">连接中…</span>
+  </div>
+</header>
+
+<main>
+  <div class="left">
+    <div class="card composer">
+      <div class="row">
+        <select id="agentSel" title="选择智能体">
+          <option value="main">main（修修）</option>
+          <option value="coder">coder（编码）</option>
+          <option value="office">office（办公）</option>
+        </select>
+        <textarea id="msg" placeholder="给修修发指令… 例如：查一下电量 / 用 Cursor 写个脚本 / 深度研究 AI 编程工具 / 分析 ~/Downloads/销售额.csv"></textarea>
+        <button class="send" id="sendBtn" onclick="submit()">发送</button>
+      </div>
+      <div class="chips" id="chips"></div>
+    </div>
+    <div class="card results">
+      <h2>任务结果</h2>
+      <div id="results"></div>
+    </div>
+  </div>
+
+  <div class="right">
+    <div class="card panel">
+      <h3>任务产物 <span id="taskCount" class="meta"></span></h3>
+      <div id="tree" class="tree"><div class="empty">加载中…</div></div>
+    </div>
+    <div class="card panel">
+      <h3>技能（Skills）</h3>
+      <div id="skills"><div class="empty">加载中…</div></div>
+    </div>
+    <div class="card panel">
+      <h3>记忆</h3>
+      <div id="memory"><div class="empty">加载中…</div></div>
+    </div>
+    <div class="card panel">
+      <h3>最近任务</h3>
+      <div id="history"><div class="empty">暂无</div></div>
+    </div>
+  </div>
+</main>
+
+<div class="preview-overlay" id="previewOverlay">
+  <div class="preview-box">
+    <div class="preview-head">
+      <span class="path" id="previewPath"></span>
+      <button class="btn primary" onclick="downloadCurrent()">下载</button>
+      <button class="btn" onclick="closePreview()">关闭</button>
+    </div>
+    <div class="preview-body" id="previewBody"></div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtSize = n => n > 1048576 ? (n/1048576).toFixed(1)+' MB' : n > 1024 ? Math.round(n/1024)+' KB' : n+' B';
+const fmtTime = ts => { const d = new Date(ts*1000); return d.getFullYear()+'/'+(d.getMonth()+1)+'/'+d.getDate()+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); };
+const CHIPS = ["查一下电量","今天天气怎么样","接下来有什么假期","用 Cursor 写代码","深度研究","分析数据","生成 Word 报告","画一张图","这个月 API 花了多少","整理桌面"];
+
+let currentDownload = null;
+
+function health() {
+  fetch('/api/health').then(r=>r.json()).then(d=>{
+    $('#healthDot').className = 'dot ' + (d.ok ? 'ok' : 'err');
+    $('#healthText').textContent = d.ok ? '已连接 · 端口 ' + d.port : '后端异常';
+  }).catch(()=>{ $('#healthDot').className='dot err'; $('#healthText').textContent='无法连接后端'; });
+}
+
+function initChips() {
+  $('#chips').innerHTML = '';
+  CHIPS.forEach(c => {
+    const b = document.createElement('button');
+    b.className = 'chip'; b.textContent = c;
+    b.onclick = () => { $('#msg').value = c; submit(); };
+    $('#chips').appendChild(b);
+  });
+}
+
+function submit() {
+  const msg = $('#msg').value.trim();
+  if (!msg) return;
+  const agent = $('#agentSel').value;
+  const btn = $('#sendBtn'); btn.disabled = true; btn.textContent = '执行中…';
+  fetch('/api/task', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({message: msg, agent}) })
+    .then(r=>r.json())
+    .then(d=>{ if (d.task_id) poll(d.task_id); else throw new Error(d.error||'提交失败'); })
+    .catch(e=>{ alert(e.message); btn.disabled=false; btn.textContent='发送'; });
+}
+
+function renderMsg(m) {
+  const t = document.createElement('div'); t.className = 'task'; t.id = 'task-'+m.task_id;
+  const badge = m.status === 'done' ? '<span class="badge done">完成</span>' : m.status === 'error' ? '<span class="badge error">失败</span>' : '<span class="badge running"><span class="spin"></span>执行中</span>';
+  t.innerHTML = '<div class="meta"><span class="badge ' + m.status + '">' + (m.status==='done'?'完成':m.status==='error'?'失败':'执行中') + '</span>' +
+    '<span>agent: '+esc(m.agent)+'</span><span>耗时 '+(m.duration||'…')+'s</span></div>' +
+    '<div class="msg">› '+esc(m.message)+'</div>' +
+    '<div class="out'+(m.error?' err':'')+'">'+esc(m.error||m.text||'…')+'</div>';
+  return t;
+}
+
+function poll(task_id) {
+  const interval = setInterval(()=>{
+    fetch('/api/task/'+task_id).then(r=>r.json()).then(t=>{
+      let el = $('#task-'+task_id);
+      if (!el) { el = renderMsg(t); $('#results').prepend(el); }
+      else el.outerHTML = renderMsg(t).outerHTML;
+      if (t.status !== 'running') {
+        clearInterval(interval);
+        $('#sendBtn').disabled = false; $('#sendBtn').textContent = '发送';
+        refreshSide();
+      }
+    }).catch(()=>{ clearInterval(interval); $('#sendBtn').disabled=false; $('#sendBtn').textContent='发送'; });
+  }, 1500);
+}
+
+// 文件树
+function renderTree(root, nodes) {
+  root.innerHTML = '';
+  if (!nodes.length) { root.innerHTML = '<div class="empty">暂无产物（~/tasks 为空）</div>'; return; }
+  nodes.forEach(n => { root.appendChild(nodeEl(n)); });
+}
+
+function nodeEl(n) {
+  const wrap = document.createElement('div'); wrap.className = 'node';
+  if (n.type === 'dir') {
+    const row = document.createElement('div'); row.className = 'dir';
+    row.innerHTML = '<span class="arrow">▸</span><span class="name">📁 '+esc(n.name)+'</span>';
+    const kids = document.createElement('div'); kids.className = 'children hide';
+    (n.children||[]).forEach(c => kids.appendChild(nodeEl(c)));
+    row.onclick = () => { const open = kids.classList.toggle('hide'); row.querySelector('.arrow').textContent = open ? '▸' : '▾'; };
+    wrap.appendChild(row); wrap.appendChild(kids);
+  } else {
+    const row = document.createElement('div'); row.className = 'file';
+    row.innerHTML = '<span class="arrow"></span><span>📄 '+esc(n.name)+'</span><span class="file-sz">'+fmtSize(n.size)+'</span>';
+    row.onclick = () => preview(n.path);
+    wrap.appendChild(row);
+  }
+  return wrap;
+}
+
+function preview(rel) {
+  const enc = encodeURIComponent(rel);
+  currentDownload = rel;
+  $('#previewPath').textContent = rel;
+  $('#previewBody').textContent = '加载中…';
+  $('#previewOverlay').style.display = 'flex';
+  fetch('/api/file?path='+enc).then(r=>{
+    if (r.status === 415) throw new Error('二进制文件：请点击下载查看');
+    if (r.status === 404) throw new Error('文件不存在');
+    return r.text();
+  }).then(t=>{ $('#previewBody').textContent = t; })
+    .catch(e=>{ $('#previewBody').textContent = e.message; });
+}
+function downloadCurrent() { if (currentDownload) window.open('/api/download?path='+encodeURIComponent(currentDownload)); }
+function closePreview() { $('#previewOverlay').style.display = 'none'; }
+$('#previewOverlay').onclick = e => { if (e.target.id === 'previewOverlay') closePreview(); };
+
+// 边栏
+function refreshSide() {
+  fetch('/api/tasks').then(r=>r.json()).then(nodes=>{ renderTree($('#tree'), nodes); $('#taskCount').textContent = '('+nodes.length+')'; });
+  fetch('/api/skills').then(r=>r.json()).then(list=>{
+    $('#skills').innerHTML = '';
+    if (!list.length) { $('#skills').innerHTML = '<div class="empty">无技能</div>'; return; }
+    list.forEach(s => {
+      const d = document.createElement('div'); d.className = 'skill-item';
+      d.innerHTML = '<div class="n">'+esc(s.name)+'</div>'+(s.description?'<div class="d">'+esc(s.description)+'</div>':'');
+      $('#skills').appendChild(d);
+    });
+  });
+  fetch('/api/memory').then(r=>r.json()).then(list=>{
+    $('#memory').innerHTML = '';
+    if (!list.length) { $('#memory').innerHTML = '<div class="empty">暂无记忆</div>'; return; }
+    list.forEach(m => {
+      const d = document.createElement('div'); d.className = 'mem-item';
+      d.innerHTML = '<span>'+esc(m.name)+'</span><span class="file-sz">'+fmtSize(m.size)+' · '+fmtTime(m.mtime)+'</span>';
+      $('#memory').appendChild(d);
+    });
+  });
+  fetch('/api/history').then(r=>r.json()).then(list=>{
+    $('#history').innerHTML = '';
+    if (!list.length) { $('#history').innerHTML = '<div class="empty">暂无</div>'; return; }
+    list.forEach(h => {
+      const d = document.createElement('div'); d.className = 'hist-item';
+      d.innerHTML = '<div>'+esc(h.message.slice(0,50))+(h.message.length>50?'…':'')+'</div><div class="t">'+esc(h.agent)+' · '+esc(h.time)+'</div>';
+      $('#history').appendChild(d);
+    });
+  });
+}
+
+$('#msg').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(); });
+
+health(); initChips(); refreshSide(); setInterval(refreshSide, 30000); setInterval(health, 15000);
+</script>
+</body>
+</html>
