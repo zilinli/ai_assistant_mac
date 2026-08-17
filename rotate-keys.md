@@ -4,13 +4,14 @@
 
 ## 为什么轮换
 
-本机 `.env` 与对话记录中曾出现过以下三个 Key，为安全起见建议全部轮换：
+本机 `.env` 与对话记录中曾出现过 API Key，为安全起见建议轮换：
 
 | 平台 | 用途 | 控制台 |
 |---|---|---|
 | DeepSeek | 主模型 | https://platform.deepseek.com/api_keys |
-| 阿里云百炼（DashScope） | 备用模型 | https://bailian.console.aliyun.com（API-KEY 管理） |
+| 阿里云百炼（DashScope） | 备用模型 + 万相文生图 | https://bailian.console.aliyun.com（API-KEY 管理） |
 | Cursor | 驱动 Cursor Agent SDK | https://cursor.com/settings/api-keys（Settings → API Keys） |
+| deAPI.ai | 文生曲（Ace-Step） | https://deapi.ai（Billing / API keys） |
 
 ## 轮换步骤
 
@@ -47,6 +48,7 @@ nano ~/.openclaw/.env
 DEEPSEEK_API_KEY=sk-新key
 DASHSCOPE_API_KEY=sk-新key
 CURSOR_API_KEY=crsr_新key
+DEAPI_API_KEY='17191|新key'   # 含竖线，必须用单引号
 ```
 
 保存后执行：

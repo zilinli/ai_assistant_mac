@@ -66,6 +66,11 @@
 ## 生成图片 / 语音（Media Gen）
 - "画一张图 / 生成图片" → 用 `media-gen` skill（万相文生图，异步任务+轮询）。
 
+## 生成歌曲 / BGM（Music Gen · deAPI）
+- "生成一首歌 / 做个 BGM / 写首歌并唱出来 / 做战歌" → **必须**用 `music-gen` skill 调 deAPI 生成 mp3，不要只交歌词。
+- 脚本：`python3 ~/.openclaw/workspace/skills/music-gen/generate_music.py --caption "..." --lyrics "..." --out ~/tasks/<任务>/song.mp3`
+- 密钥：`DEAPI_API_KEY`（`~/.openclaw/.env`，含 `|` 必须用单引号）。
+
 ## 操控屏幕（Computer Use）
 - "帮我点 / 打开并操作应用 / 自动填表" → 用 `computer-use` skill（cliclick + osascript），先截图定位再操作。
 

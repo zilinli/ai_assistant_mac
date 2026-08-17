@@ -1,6 +1,6 @@
 ---
 name: media-gen
-description: "多模态生成：用百炼 DashScope 通义万相（wanx2.1-t2i-turbo）异步文生图，下载到任务目录并交付；语音用 ElevenLabs sag（已装时）或百炼 CosyVoice。当用户要'画一张图/生成图片/配图/做海报图/生成一段语音'时使用。"
+description: "多模态生成：百炼万相文生图；deAPI 文生曲请改用 music-gen skill。当用户要'画一张图/生成图片/配图/做海报图'时使用本技能；要'生成歌曲/BGM/战歌'时用 music-gen。"
 ---
 
 # Media Gen（多模态生成）
