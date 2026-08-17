@@ -67,6 +67,7 @@ def run_openclaw_agent(task_id, agent, message):
             text = out.strip() or ("stderr: " + (proc.stderr or "")[-1000:]) or "（无输出）"
         with _lock:
             _tasks[task_id] = {
+                "task_id": task_id,
                 "status": "done",
                 "text": text,
                 "error": None,
@@ -79,6 +80,7 @@ def run_openclaw_agent(task_id, agent, message):
         log("task %s error: %s" % (task_id, e))
         with _lock:
             _tasks[task_id] = {
+                "task_id": task_id,
                 "status": "error",
                 "text": "",
                 "error": str(e),
@@ -205,6 +207,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/" or path == "/index.html":
             return self._serve_static("index.html", "text/html; charset=utf-8")
+        if path == "/marked.min.js":
+            return self._serve_static("marked.min.js", "application/javascript; charset=utf-8")
 
         if path == "/api/health":
             ok = os.path.exists(os.path.join(HOME, ".openclaw", "openclaw.json"))
@@ -226,12 +230,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, _hist)
 
         if path.startswith("/api/task/"):
-            tid = path.split("/")[-1]
+            tid = urllib.parse.unquote(path.split("/")[-1])
             with _lock:
                 t = _tasks.get(tid)
             if not t:
                 return self._json(404, {"error": "task not found"})
-            return self._json(200, t)
+            out = dict(t)
+            out["task_id"] = tid
+            return self._json(200, out)
 
         if path == "/api/file":
             rel = qs.get("path", [""])[0]
@@ -286,6 +292,7 @@ class Handler(BaseHTTPRequestHandler):
         task_id = "%s-%d" % (int(time.time() * 1000), len(_tasks) + 1)
         with _lock:
             _tasks[task_id] = {
+                "task_id": task_id,
                 "status": "running", "text": "", "error": None,
                 "agent": agent, "message": message,
                 "started": time.time(), "duration": 0,
