@@ -116,11 +116,18 @@
   .bubble.user { align-self: flex-end; max-width: 82%; background: var(--accent-dim); font-size: 14px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
   .bubble.assistant { width: 100%; }
   .bubble .meta { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 11px; color: var(--muted); font-family: var(--mono); }
+  .stop-btn {
+    margin-left: auto; background: transparent; border: 1px solid rgba(248,113,113,.45);
+    color: var(--err); padding: 2px 8px; cursor: pointer;
+    font-family: var(--mono); font-size: 10px; letter-spacing: .06em;
+  }
+  .stop-btn:hover { background: rgba(248,113,113,.14); }
   .badge { font-size: 10px; padding: 2px 7px; font-weight: 600; letter-spacing: .06em; border: 1px solid transparent; }
   .badge.running { color: var(--run); border-color: rgba(251,191,36,.35); }
   .badge.done { color: var(--ok); border-color: rgba(52,211,153,.35); }
   .badge.error { color: var(--err); border-color: rgba(248,113,113,.35); }
   .badge.interrupted { color: #fbbf24; border-color: rgba(251,191,36,.35); }
+  .badge.cancelled { color: #fbbf24; border-color: rgba(251,191,36,.35); }
   .out { font-size: 14.5px; line-height: 1.7; word-break: break-word; max-height: 640px; overflow: auto; }
   .out.err { color: var(--err); white-space: pre-wrap; }
   .out.md h1, .out.md h2, .out.md h3, .out.md h4 { font-weight: 650; line-height: 1.3; margin: 1.1em 0 .45em; }
@@ -463,7 +470,7 @@ function initChips() {
 }
 
 function statusLabel(s) {
-  return s === 'done' ? 'DONE' : s === 'error' ? 'ERROR' : s === 'interrupted' ? 'INTERRUPTED' : 'RUNNING';
+  return s === 'done' ? 'DONE' : s === 'error' ? 'ERROR' : s === 'interrupted' ? 'INTERRUPTED' : s === 'cancelled' ? 'STOPPED' : 'RUNNING';
 }
 
 function renderTurn(m) {
@@ -496,18 +503,41 @@ function renderTurn(m) {
     }
   } else if (m.status === 'interrupted') {
     body = '<div class="out err">任务已中断（服务曾重启或进程被终止），请重新提交。</div>';
+  } else if (m.status === 'cancelled') {
+    body = '<div class="out err">任务已停止' + (m.text ? '：' + esc(m.text) : '。') + '</div>';
   } else {
     body = '<div class="out md">' + renderMd(m.text || '') + '</div>';
   }
+  const stopBtn = (m.status === 'running')
+    ? '<button class="stop-btn" data-task="' + esc(m.task_id) + '" title="停止">■ STOP</button>'
+    : '';
   el.innerHTML =
     '<div class="bubble user">' + esc(m.message || '') + '</div>' +
     '<div class="bubble assistant">' +
       '<div class="meta"><span class="badge ' + esc(m.status) + '">' + statusLabel(m.status) + '</span>' +
-      '<span>' + esc(m.agent || 'cursor') + '</span><span>' + dur + '</span></div>' +
+      '<span>' + esc(m.agent || 'cursor') + '</span><span>' + dur + '</span>' +
+      stopBtn +
+      '</div>' +
       body +
     '</div>';
+  if (stopBtn) {
+    el.querySelector('.stop-btn').onclick = () => stopTask(m.task_id);
+  }
   updateLive(m);
   return el;
+}
+
+function stopTask(task_id) {
+  fetch('/api/task/' + encodeURIComponent(task_id) + '/cancel', { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+      // SSE 会推送 cancelled 事件；这里兜底：若流已断则直接落定
+      if (streams[task_id]) {
+        streams[task_id].acc.status = 'cancelled';
+        streams[task_id].acc.activity = '已停止';
+      }
+    })
+    .catch(()=>{});
 }
 
 function updateLive(m) {
@@ -527,7 +557,7 @@ function updateLive(m) {
     $('#liveBody').scrollTop = $('#liveBody').scrollHeight;
   } else {
     $('#liveDot').className = 'live-dot ' + (m.status === 'done' ? 'done' : 'err');
-    $('#liveMsg').textContent = m.status === 'done' ? 'DONE' : (m.error || 'ERROR');
+    $('#liveMsg').textContent = m.status === 'done' ? 'DONE' : (m.status === 'cancelled' ? 'STOPPED' : (m.error || 'ERROR'));
   }
 }
 
@@ -661,6 +691,9 @@ function streamTask(task_id, message, agent) {
         break;
       case 'error':
         finish('error', null, ev.error || 'Cursor 执行失败');
+        break;
+      case 'cancelled':
+        finish('cancelled', acc.text || '（用户已停止）', null);
         break;
     }
   }

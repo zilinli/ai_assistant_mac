@@ -94,6 +94,10 @@ _sessions = []  # 会话列表，元素：{session_id, agent, agent_id, title, c
 _lock = threading.Lock()
 # task_id -> list[queue.Queue]：SSE 订阅者，cursor 任务运行时会向其中推送流式事件
 _stream_queues = {}
+# task_id -> subprocess.Popen：运行中的子进程，用于「停止」
+_procs = {}
+# task_id -> threading.Event：取消标记
+_cancel = {}
 
 
 def _publish(task_id, ev):
@@ -110,6 +114,37 @@ def _publish(task_id, ev):
 
 def log(msg):
     print("[console] %s" % msg, flush=True)
+
+
+def _is_cancelled(task_id):
+    ev = _cancel.get(task_id)
+    return bool(ev and ev.is_set())
+
+
+def cancel_task(task_id):
+    """停止一个 running 任务：杀死子进程、标记 cancelled、推送事件。返回是否真的取消。"""
+    with _lock:
+        t = _tasks.get(task_id)
+        if not t or t.get("status") != "running":
+            return False
+        _cancel.setdefault(task_id, threading.Event()).set()
+        proc = _procs.get(task_id)
+        if proc is not None and proc.poll() is None:
+            try:
+                proc.kill()
+            except Exception:  # noqa: BLE001
+                pass
+        t["status"] = "cancelled"
+        t["error"] = None
+        t["activity"] = "已停止"
+        t["duration"] = round(time.time() - t.get("started", time.time()), 1)
+        session_id = t.get("session_id")
+        _set_hist(task_id, "cancelled", None)
+        if session_id:
+            _append_session_msg(session_id, "assistant", "（用户已停止）", "cancelled")
+    _publish(task_id, {"type": "cancelled"})
+    _dbg("task cancelled", "D", task_id=task_id)
+    return True
 
 
 def file_kind(name):
@@ -142,11 +177,23 @@ def run_openclaw_agent(task_id, agent, message, session_id=None):
     env = dict(os.environ)
     cmd = ["openclaw", "agent", "--agent", agent, "--json", "-m", message]
     started = time.time()
+    log("run task %s agent=%s msg=%s..." % (task_id, agent, message[:60]))
     try:
-        log("run task %s agent=%s msg=%s..." % (task_id, agent, message[:60]))
-        proc = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=900, env=env)
-        out = proc.stdout
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
+        with _lock:
+            _procs[task_id] = proc
+        try:
+            out, err = proc.communicate(timeout=900)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            out, err = proc.communicate()
+        finally:
+            with _lock:
+                _procs.pop(task_id, None)
+        # 被手动停止：cancel_task 已标记 cancelled，这里不再覆盖
+        if _is_cancelled(task_id):
+            return
         text = None
         try:
             data = json.loads(out)
@@ -157,7 +204,7 @@ def run_openclaw_agent(task_id, agent, message, session_id=None):
             else:
                 text = data.get("status") or data.get("summary") or out[-2000:]
         except json.JSONDecodeError:
-            text = out.strip() or ("stderr: " + (proc.stderr or "")[-1000:]) or "（无输出）"
+            text = out.strip() or ("stderr: " + (err or "")[-1000:]) or "（无输出）"
         with _lock:
             _tasks[task_id] = {
                 "task_id": task_id,
@@ -176,6 +223,8 @@ def run_openclaw_agent(task_id, agent, message, session_id=None):
         _dbg("task done", "B", task_id=task_id, text_len=len(text or ""))
         # endregion
     except Exception as e:  # noqa: BLE001
+        if _is_cancelled(task_id):
+            return
         log("task %s error: %s" % (task_id, e))
         with _lock:
             _tasks[task_id] = {
@@ -258,6 +307,8 @@ def run_cursor_agent(task_id, agent, message, session_id=None):
             ["node", CURSOR_RUNNER],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, text=True, env=env)
+        with _lock:
+            _procs[task_id] = proc
         try:
             proc.stdin.write(payload)
         except BrokenPipeError:
@@ -320,6 +371,10 @@ def run_cursor_agent(task_id, agent, message, session_id=None):
             proc.wait(timeout=900)
         except subprocess.TimeoutExpired:
             proc.kill()
+            if _is_cancelled(task_id):
+                with _lock:
+                    _procs.pop(task_id, None)
+                return
             _apply(final_status="error", err="Cursor 执行超时（900s）")
             with _lock:
                 _set_hist(task_id, "error", None)
@@ -327,6 +382,11 @@ def run_cursor_agent(task_id, agent, message, session_id=None):
                     _append_session_msg(session_id, "assistant", "Cursor 执行超时（900s）", "error")
             return
         reader.join(timeout=5)
+        with _lock:
+            _procs.pop(task_id, None)
+        # 被手动停止：cancel_task 已标记 cancelled，直接返回，不覆盖
+        if _is_cancelled(task_id):
+            return
         if final is None:
             err = (proc.stderr.read() or "")[-1000:]
             _finalize({"type": "error", "error": "Cursor 无有效输出" + ("\n" + err if err else "")})
@@ -338,6 +398,10 @@ def run_cursor_agent(task_id, agent, message, session_id=None):
         else:
             _dbg("cursor task error", "C", task_id=task_id, error=final.get("error"))
     except Exception as e:  # noqa: BLE001
+        if _is_cancelled(task_id):
+            with _lock:
+                _procs.pop(task_id, None)
+            return
         log("cursor task %s error: %s" % (task_id, e))
         _apply(final_status="error", err=str(e))
         with _lock:
@@ -876,16 +940,17 @@ class Handler(BaseHTTPRequestHandler):
                     self.wfile.flush()
                     with _lock:
                         cur = _tasks.get(tid)
-                    if cur and cur.get("status") in ("done", "error"):
+                    if cur and cur.get("status") in ("done", "error", "cancelled"):
+                        st = cur["status"]
                         send_ev({
-                            "type": "done" if cur["status"] == "done" else "error",
+                            "type": st,
                             "text": cur.get("text") or "",
                             "error": cur.get("error"),
                         })
                         terminal_sent = True
                     continue
                 send_ev(ev)
-                if ev.get("type") in ("done", "error"):
+                if ev.get("type") in ("done", "error", "cancelled"):
                     terminal_sent = True
         except (BrokenPipeError, ConnectionResetError):
             pass
@@ -1019,6 +1084,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
+        if path.startswith("/api/task/") and path.endswith("/cancel"):
+            tid = urllib.parse.unquote(path.split("/")[-2])
+            ok = cancel_task(tid)
+            return self._json(200, {"ok": ok, "task_id": tid})
         if path.startswith("/api/session/") and path.endswith("/delete"):
             sid = urllib.parse.unquote(path.split("/")[-2])
             with _lock:
